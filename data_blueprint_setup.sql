@@ -81,6 +81,7 @@ CREATE DATABASE IF NOT EXISTS HH_TEST
 
 -- Step 5: Create Medallion Architecture Schemas
 USE DATABASE HH_DEV;
+USE DATABASE HH_TEST;
 
 -- Bronze Layer Schemas
 CREATE SCHEMA IF NOT EXISTS BRONZE_DB 
