@@ -3,111 +3,177 @@ USE WAREHOUSE DEV_WH;
 USE DATABASE HH_DEV;
 USE SCHEMA BRONZE_DB;
 
-SELECT * FROM GOLD_DB.DIM_RAC_DT_ECASE_CLINICAL_DATA;
-
-CREATE OR REPLACE DYNAMIC TABLE GOLD_DB.DIM_RAC_DT_ECASE_CLINICAL_DATA
+CREATE OR REPLACE DYNAMIC TABLE SILVER_DB.ECASE_RAC_DT_ASSESSMENT_AFM_CONFORMED
 TARGET_LAG = '5 minutes'
 WAREHOUSE = DEV_WH
 AS
-WITH SiteStartDates AS (
-    SELECT 'Ingle Farm' AS Site, TO_DATE('2025-11-03') AS StartDate
-    UNION ALL
-    SELECT 'Port Pirie', TO_DATE('2025-11-17')
+WITH AllInactiveAssessmentCT AS (
+    SELECT DISTINCT 
+        AssessmentID AS AsmtID
+    FROM BRONZE_DB.ECASE_ASSESSMENT_FORM_RAW
+    WHERE CPStatus = -1
+      AND AssessmentID NOT IN (
+            SELECT DISTINCT AssessmentID 
+            FROM BRONZE_DB.ECASE_ASSESSMENT_FORM_RAW
+            WHERE CPStatus IN (0, 1)
+        )
 ),
 
-distinct_incclass AS (
-    SELECT 'Infection' AS IncClassPrimary
-    UNION ALL SELECT 'SIRS \\ ' || LongDesc FROM BRONZE_DB.ECASE_ASSAULT_TYPES_RAW
-    UNION ALL SELECT 'Wounds \\ ' || LongDesc FROM BRONZE_DB.ECASE_WOUND_TYPES_RAW
-    UNION ALL SELECT 'Incidents \\ ' || LongDesc FROM BRONZE_DB.ECASE_INCIDENT_TYPES_RAW
-    UNION ALL SELECT 'MedIncidents \\ ' || LongDesc FROM BRONZE_DB.ECASE_MEDINCIDENT_TYPE_RAW
-),
-
-/* Snowflake replacement for recursive calendar */
-Calendar AS (
+LatestFormAsmtCT AS (
     SELECT 
-        s.Site,
-        DATEADD('day', seq4(), s.StartDate) AS IncidentDate
-    FROM SiteStartDates s
-    JOIN TABLE(GENERATOR(ROWCOUNT => 2000)) g
-    WHERE DATEADD('day', seq4(), s.StartDate) <= CURRENT_DATE()
+        FormID,
+        MAX(ID) AS MaxAsmtFormID
+    FROM BRONZE_DB.ECASE_ASSESSMENT_FORM_RAW
+    GROUP BY FormID
 ),
 
-RiskStrat AS (
-    SELECT 'SAC 1 - Extreme' AS RiskStrat
-    UNION ALL SELECT 'SAC 2 - High'
-    UNION ALL SELECT 'SAC 3 - Moderate'
-    UNION ALL SELECT 'SAC 4 - Low'
-    UNION ALL SELECT 'Undefined'
+assesment_data AS (
+    SELECT DISTINCT
+        S.AssessmentID,
+        S.ID AS FormID,
+        CASE
+            WHEN aia.AsmtID IS NOT NULL OR S.CPStatus = -1 THEN 'Inactive'
+            WHEN S.CPStatus = 1 THEN 'Published'
+            WHEN S.CPStatus = 0 THEN 'Under Review'
+            WHEN S.CPStatus IS NULL THEN 'Not Published'
+        END AS AssessmentStatus,
+        CAST(A.ChangeDateTime AS DATE) AS CreatedDate,
+        CASE WHEN lfa.MaxAsmtFormID IS NOT NULL THEN 'Yes' ELSE 'No' END AS isLatest
+    FROM BRONZE_DB.ECASE_ASSESSMENT_RAW A
+    LEFT JOIN BRONZE_DB.ECASE_ASSESSMENT_FORM_RAW S 
+        ON S.AssessmentID = A.ID
+    LEFT JOIN AllInactiveAssessmentCT aia
+        ON A.ID = aia.AsmtID
+    LEFT JOIN LatestFormAsmtCT lfa
+        ON S.FormID = lfa.FormID
+       AND S.ID = lfa.MaxAsmtFormID
 ),
 
-AllDateInclass AS (
-    SELECT c.IncidentDate, d.IncClassPrimary, c.Site, r.RiskStrat
-    FROM Calendar c
-    CROSS JOIN distinct_incclass d
-    CROSS JOIN RiskStrat r
-),
-
-DATA1 AS (
+LatestCarePlanElement AS (
     SELECT
-        Status, BaseID, Program, IncidentDate, IncidentTime,
-        IncClassPrimary, InfType,
-        CASE WHEN Site = 'Lealholme (Port Pirie)' THEN 'Port Pirie' ELSE Site END AS Site,
-        Incident_Location, IncidentCount,
-        CASE 
-            WHEN RiskStrat = '1' THEN 'SAC 1 - Extreme'
-            WHEN RiskStrat = '2' THEN 'SAC 2 - High'
-            WHEN RiskStrat = '3' THEN 'SAC 3 - Moderate'
-            WHEN RiskStrat = '4' THEN 'SAC 4 - Low'
-            ELSE 'Undefined'
-        END AS RiskStrat,
-        SIRSIncType, SIRSVicPerp, FirstName, Surname, ResidentID,
-        Description, Detail, SIRSIncCat, SIRSDegreeHarm,
-        ResidentType, ResidentStatus
-    FROM SILVER_DB.ECASE_RAC_DT_POWERBI_CLINICAL_CONFORMED
+        a.ResID,
+        rf.Customer_Code,
+        f.Name,
+        cpus.AssessmentFormID,
+        cpus.SelectionValue,
+        fe.ElementName
+    FROM BRONZE_DB.ECASE_CPUSERSELECTION_RAW cpus
+    JOIN BRONZE_DB.ECASE_ASSESSMENT_FORM_RAW af
+        ON af.ID = cpus.AssessmentFormID
+    JOIN BRONZE_DB.ECASE_FORM_RAW f
+        ON f.ID = af.FormID
+    JOIN BRONZE_DB.ECASE_ASSESSMENT_RAW a
+        ON a.ID = af.AssessmentID
+    JOIN BRONZE_DB.ECASE_RESIDENT_FAC_RAW rf
+        ON rf.ID = a.ResID
+    JOIN BRONZE_DB.ECASE_FORMELEMENTS_RAW fe
+        ON fe.ID = cpus.FormElementsID
+    JOIN BRONZE_DB.ECASE_CPTITLE_RAW cpt
+        ON cpt.ID = fe.CPTitleID
 ),
 
-procura_data AS (
-    SELECT 
-        AccountNum,
+assess_data AS (
+
+    SELECT
+        L.ResID,
+        L.Customer_Code,
+        L.Name,
+        L.AssessmentFormID,
+        A.AssessmentID,
+        A.AssessmentStatus,
+        A.CreatedDate,
+        A.isLatest,
+
+        /* Functional Measure Final Score */
+        CASE WHEN ElementName = 'FunctionalMeasure_FinalScore' 
+             THEN SelectionValue 
+        END AS FunctionalMeasure_FinalScore,
+
+        /* AFM – Locomotion Comprehension */
         CASE 
-            /* TRY_TO_NUMBER() = Snowflake safe version of ISNUMERIC() */
-            WHEN TRY_TO_NUMBER(HHAC_ECASERESIDENTID) IS NULL THEN '999999'
-            ELSE HHAC_ECASERESIDENTID
-        END AS HHAC_ECASERESIDENTID
-    FROM GOLD_DB.DIM_CUSTTABLE
-    WHERE HHAC_ECASERESIDENTID <> ''
+            WHEN ElementName = 'FM_Locomotion_Table_Comp_1' THEN SelectionValue + 1 
+        END AS Locomotion_Comprehension,
+
+        /* AFM – Locomotion Expression */
+        CASE 
+            WHEN ElementName = 'FM_Locomotion_Table_Exp_1' THEN SelectionValue + 1
+        END AS Locomotion_Expression,
+
+        /* AFM – Locomotion Walk/Wheelchair */
+        CASE 
+            WHEN ElementName = 'FM_Locomotion_Table_WW_1' THEN SelectionValue + 1
+        END AS Locomotion_Walk_Wheelchair,
+
+        CASE 
+            WHEN ElementName = 'FM_Locomotion_Table_TotalScore' THEN SelectionValue
+        END AS Locomotion_TotalScore,
+
+        /* Social Cognitive — Memory */
+        CASE
+            WHEN ElementName = 'FM_SocialCog_Table_Memory_1' THEN SelectionValue + 1
+        END AS SocialCog_Memory,
+
+        /* Social Cognitive — Problem Solving */
+        CASE
+            WHEN ElementName = 'FM_SocialCog_Table_Problem_1' THEN SelectionValue + 1
+        END AS SocialCog_Problem,
+
+        /* Social Cognitive — Social Interaction */
+        CASE
+            WHEN ElementName = 'FM_SocialCog_Table_SocialInt_1' THEN SelectionValue + 1
+        END AS SocialCog_SocialInt,
+
+        /* SocialCog Total Score */
+        CASE
+            WHEN ElementName = 'FM_SocialCog_Table_TotalScore' THEN SelectionValue
+        END AS SocialCog_TotalScore
+
+    FROM LatestCarePlanElement L
+    LEFT JOIN assesment_data A
+        ON L.AssessmentFormID = A.FormID
+    WHERE L.Name = 'Australian Functional Measure (AFM)'
+      AND A.AssessmentStatus IS NOT NULL
 )
 
-SELECT 
-    c.Status,
-    c.BaseID,
-    'Residential' AS Program,
-    a.IncidentDate,
-    c.IncidentTime,
-    a.IncClassPrimary,
-    c.InfType,
-    a.Site,
-    c.Incident_Location,
-    COALESCE(c.IncidentCount, 0) AS IncidentCount,
-    a.RiskStrat,
-    c.SIRSIncType,
-    c.SIRSVicPerp,
-    c.FirstName,
-    c.Surname,
-    ct.AccountNum AS MedicalRecordNo,
-    c.ResidentID AS eCase_ResidentID,
-    c.Description,
-    c.Detail,
-    c.SIRSIncCat,
-    c.SIRSDegreeHarm,
-    CURRENT_TIMESTAMP() AS LOADED_AT
-FROM AllDateInclass a
-LEFT JOIN DATA1 c
-    ON c.IncidentDate = a.IncidentDate
-   AND c.IncClassPrimary = a.IncClassPrimary
-   AND c.Site = a.Site
-   AND c.RiskStrat = a.RiskStrat
-LEFT JOIN procura_data ct
-    ON c.ResidentID = ct.HHAC_ECASERESIDENTID;
+SELECT
+    ResID,
+    Customer_Code,
+    Name,
+    AssessmentFormID,
+    AssessmentID,
+    AssessmentStatus,
+    CreatedDate,
+    isLatest,
 
+    MAX(FunctionalMeasure_FinalScore) AS FunctionalMeasure_FinalScore,
+
+    MAX(Locomotion_Comprehension) AS Locomotion_Comprehension,
+    MAX(Locomotion_Expression) AS Locomotion_Expression,
+    MAX(Locomotion_Walk_Wheelchair) AS Locomotion_Walk_Wheelchair,
+    MAX(Locomotion_TotalScore) AS Locomotion_TotalScore,
+
+    MAX(SocialCog_Memory) AS SocialCog_Memory,
+    MAX(SocialCog_Problem) AS SocialCog_Problem,
+    MAX(SocialCog_SocialInt) AS SocialCog_SocialInt,
+    MAX(SocialCog_TotalScore) AS SocialCog_TotalScore,
+
+    /* AFM Combined Score */
+    (
+        MAX(SocialCog_Memory)
+      + MAX(SocialCog_Problem)
+      + MAX(SocialCog_SocialInt)
+      + MAX(Locomotion_Comprehension)
+      + MAX(Locomotion_Expression)
+    ) AS Score1,
+    CURRENT_TIMESTAMP() AS LOADED_AT
+
+FROM assess_data
+GROUP BY 
+    ResID,
+    Customer_Code,
+    Name,
+    AssessmentFormID,
+    AssessmentID,
+    AssessmentStatus,
+    CreatedDate,
+    isLatest;

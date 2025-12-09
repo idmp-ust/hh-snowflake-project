@@ -3,6 +3,8 @@ USE WAREHOUSE DEV_WH;
 USE DATABASE HH_DEV;
 USE SCHEMA BRONZE_DB;
 
+-- SELECT * FROM GOLD_DB.DIM_RAC_DT_ECASE_AN_ACC_DATA;
+
 CREATE OR REPLACE DYNAMIC TABLE GOLD_DB.DIM_RAC_DT_ECASE_AN_ACC_DATA
     TARGET_LAG = '5 MINUTES'
     WAREHOUSE = DEV_WH
@@ -43,55 +45,55 @@ anacc AS (
 
 final_data AS (
     SELECT
-        rw.FacilityCode AS ECL_ACMFACILITYID,
-        rw.Bed AS ECL_ACMACCOMMODATIONID,
-        r.ID AS eCase_ResidentID,
-        rr.CUSTACCOUNT AS ACCOUNTNUM,
-        CONCAT(r.Salutation, ' ', r.FirstName, ' ', r.LastName) AS NAME,
-        CASE WHEN r.IsRespite = 1 THEN 'RESP' ELSE 'PERM' END AS ECL_ACMRESIDENTTYPEID,
+        rw.FacilityCode AS "ECL_ACMFACILITYID",
+        rw.Bed AS "ECL_ACMACCOMMODATIONID",
+        r.ID AS "eCase_ResidentID",
+        rr.CUSTACCOUNT AS "ACCOUNTNUM",
+        CONCAT(r.Salutation, ' ', r.FirstName, ' ', r.LastName) AS "NAME",
+        CASE WHEN r.IsRespite = 1 THEN 'RESP' ELSE 'PERM' END AS "ECL_ACMRESIDENTTYPEID",
 
         rr.RCSCATEGORYCODE AS "Official_AN_ACC_Category",
-        dm.DeMorton_RAW_Score AS DEMMI_Score,
+        dm.DeMorton_RAW_Score AS "DEMMI_Score",
         (
             SocialCog_Memory +
             SocialCog_Problem +
             SocialCog_SocialInt +
             Locomotion_Comprehension +
             Locomotion_Expression
-        ) AS AM_FIM_Score,
+        ) AS "AM_FIM_Score",
 
-        rug.RugItem_FinalScore AS RUG_ADL_Score,
+        rug.RugItem_FinalScore AS "RUG_ADL_Score",
         rk.Fraility_Score AS "Domain_1_24_Rockwood_Frailty_Scale",
-        br.BRADEN_FinalScoreValue AS BRADEN_Score,
-        AKPS_finalScore AS CF_AKPS,
+        br.BRADEN_FinalScoreValue AS "BRADEN_Score",
+        AKPS_finalScore AS "CF_AKPS",
 
         CASE 
             WHEN cf."Do I have any compounding factors?" = 'Yes' THEN 1
             WHEN cf."Do I have any compounding factors?" = 'No'  THEN 0
             ELSE NULL
-        END AS CF_Status_Resp,
+        END AS "CF_Status_Resp",
 
         CASE 
             WHEN i.occ IS NULL OR i.occ = 0 THEN 0
             WHEN i.occ = 1 THEN 1
             WHEN i.occ > 1 THEN 2
             ELSE NULL
-        END AS Frailty,
+        END AS "Frailty",
 
-        brua.BRUA_FinalScoreValue AS CF_BRUA,
-        cf."Do I have any compounding factors?" AS CF_Status,
+        brua.BRUA_FinalScoreValue AS "CF_BRUA",
+        cf."Do I have any compounding factors?" AS "CF_Status",
 
         CASE 
             WHEN cf."Do I have any compounding factors?" = 'Yes' THEN 0
             WHEN cf."Do I have any compounding factors?" = 'No'  THEN 1
             ELSE NULL
-        END AS CF_Status_No,
+        END AS "CF_Status_No",
 
         CASE 
             WHEN cf."Do I have any compounding factors?" = 'Yes' THEN 1
             WHEN cf."Do I have any compounding factors?" = 'No'  THEN 0
             ELSE NULL
-        END AS CF_Status_Yes
+        END AS "CF_Status_Yes"
 
     FROM BRONZE_DB.ECASE_RESIDENT_FAC_RAW r
     LEFT JOIN SILVER_DB.ECASE_RAC_DT_ASSESSMENT_AFM_CONFORMED afm

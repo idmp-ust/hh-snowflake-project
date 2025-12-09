@@ -3,111 +3,62 @@ USE WAREHOUSE DEV_WH;
 USE DATABASE HH_DEV;
 USE SCHEMA BRONZE_DB;
 
-SELECT * FROM GOLD_DB.DIM_RAC_DT_ECASE_CLINICAL_DATA;
+-- BRONZE_DB
+SELECT COUNT(*) FROM  BRONZE_DB.ECASE_ASSAULT_TYPES_RAW;                                //8         (8)
+SELECT COUNT(*) FROM  BRONZE_DB.ECASE_BEDHISTORY_RAW;                                   //239       (239)
+SELECT COUNT(*) FROM  BRONZE_DB.ECASE_BEDS_RAW;                                         //973       (973)
+SELECT COUNT(*) FROM  BRONZE_DB.ECASE_COMPULSORY_IMPACTASSESSMENT_TYPES_RAW;            //7         (7)
+SELECT COUNT(*) FROM  BRONZE_DB.ECASE_COMPULSORY_INCIDENTPRIORITY_RAW;                  //2         (2)
+SELECT COUNT(*) FROM  BRONZE_DB.ECASE_COMPULSORY_REPORTING_TRAN_RAW;                    //0         (0)
+SELECT COUNT(*) FROM  BRONZE_DB.ECASE_FACILITY_RAW;                                     //13        (13)
+SELECT COUNT(*) FROM  BRONZE_DB.ECASE_FORMELEMENTS_RAW;                                 //4219      (4219)
+SELECT COUNT(*) FROM  BRONZE_DB.ECASE_FORM_RAW;                                         //64        (64)
+SELECT COUNT(*) FROM  BRONZE_DB.ECASE_INCIDENT_SUBTYPES_RAW;                            //36        (36)
+SELECT COUNT(*) FROM  BRONZE_DB.ECASE_INCIDENT_TRAN_RAW;                                //123       (123)
+SELECT COUNT(*) FROM  BRONZE_DB.ECASE_INCIDENT_TYPES_RAW;                               //28        (28)
+SELECT COUNT(*) FROM  BRONZE_DB.ECASE_INFECTIONS_TRAN_RAW;                              //0         (20) 48 ?????
+SELECT COUNT(*) FROM  BRONZE_DB.ECASE_INFECTION_TYPES_RAW;                              //12        (12)
+SELECT COUNT(*) FROM  BRONZE_DB.ECASE_LOCATION_RAW;                                     //16        (16)
+SELECT COUNT(*) FROM  BRONZE_DB.ECASE_MEDINCIDENT_TRAN_RAW;                             //1         (6)  21  ?????
+SELECT COUNT(*) FROM  BRONZE_DB.ECASE_MEDINCIDENT_TYPE_RAW;                             //20        (20)
+SELECT COUNT(*) FROM  BRONZE_DB.ECASE_RESIDENT_FAC_RAW;                                 //313       (826) 1260 ?????
+SELECT COUNT(*) FROM  BRONZE_DB.ECASE_RESIDENT_TYPE_RAW;                                //7         (7)
+SELECT COUNT(*) FROM  BRONZE_DB.ECASE_RISKMATRIX_TYPE_RAW;                              //25        (25)
+SELECT COUNT(*) FROM  BRONZE_DB.ECASE_ROOMS_RAW;                                        //960       (960)
+SELECT COUNT(*) FROM  BRONZE_DB.ECASE_WINGS_RAW;                                        //57        (57)
+SELECT COUNT(*) FROM  BRONZE_DB.ECASE_WOUNDS_TRAN_RAW;                                  //21        (116) 183 ?????
+SELECT COUNT(*) FROM  BRONZE_DB.ECASE_WOUND_TYPES_RAW;                                  //31        (31)
+SELECT COUNT(*) FROM  BRONZE_DB.ECASE_ASSESSMENT_FORM_RAW;                              //2045      (6965) 7447 ?????
+SELECT COUNT(*) FROM  BRONZE_DB.ECASE_ASSESSMENT_RAW;                                   //1621      (5499) 5846 ?????
+SELECT COUNT(*) FROM  BRONZE_DB.ECASE_CPTITLE_RAW;                                      //776       (776)
+SELECT COUNT(*) FROM  BRONZE_DB.ECASE_CPUSERSELECTION_RAW;                              //51167     (619423) ?????
 
-CREATE OR REPLACE DYNAMIC TABLE GOLD_DB.DIM_RAC_DT_ECASE_CLINICAL_DATA
-TARGET_LAG = '5 minutes'
-WAREHOUSE = DEV_WH
-AS
-WITH SiteStartDates AS (
-    SELECT 'Ingle Farm' AS Site, TO_DATE('2025-11-03') AS StartDate
-    UNION ALL
-    SELECT 'Port Pirie', TO_DATE('2025-11-17')
-),
 
-distinct_incclass AS (
-    SELECT 'Infection' AS IncClassPrimary
-    UNION ALL SELECT 'SIRS \\ ' || LongDesc FROM BRONZE_DB.ECASE_ASSAULT_TYPES_RAW
-    UNION ALL SELECT 'Wounds \\ ' || LongDesc FROM BRONZE_DB.ECASE_WOUND_TYPES_RAW
-    UNION ALL SELECT 'Incidents \\ ' || LongDesc FROM BRONZE_DB.ECASE_INCIDENT_TYPES_RAW
-    UNION ALL SELECT 'MedIncidents \\ ' || LongDesc FROM BRONZE_DB.ECASE_MEDINCIDENT_TYPE_RAW
-),
 
-/* Snowflake replacement for recursive calendar */
-Calendar AS (
-    SELECT 
-        s.Site,
-        DATEADD('day', seq4(), s.StartDate) AS IncidentDate
-    FROM SiteStartDates s
-    JOIN TABLE(GENERATOR(ROWCOUNT => 2000)) g
-    WHERE DATEADD('day', seq4(), s.StartDate) <= CURRENT_DATE()
-),
+-- SILVER_DB
+SELECT COUNT(*) FROM  SILVER_DB.ECASE_RAC_DT_ASSESSMENT_AFM_CONFORMED;                  //90
+SELECT COUNT(*) FROM  SILVER_DB.ECASE_RAC_DT_ASSESSMENT_AKPS_CONFORMED;                 //90
+SELECT COUNT(*) FROM  SILVER_DB.ECASE_RAC_DT_ASSESSMENT_BRADEN_CONFORMED;               //90
+SELECT COUNT(*) FROM  SILVER_DB.ECASE_RAC_DT_ASSESSMENT_BRUA_CONFORMED;                 //90
+SELECT COUNT(*) FROM  SILVER_DB.ECASE_RAC_DT_ASSESSMENT_DEMMI_CONFORMED;                //98
+SELECT COUNT(*) FROM  SILVER_DB.ECASE_RAC_DT_ASSESSMENT_ROCKWOOD_CONFORMED;             //88
+SELECT COUNT(*) FROM  SILVER_DB.ECASE_RAC_DT_ASSESSMENT_COMPOUNDING_FACTORS_CONFORMED;  //91
+SELECT COUNT(*) FROM  SILVER_DB.ECASE_RAC_DT_ASSESSMENT_RUG_CONFORMED;                  //91
+SELECT COUNT(*) FROM  SILVER_DB.ECASE_RAC_DT_POWERBI_CLINICAL_CONFORMED;                //90
+SELECT COUNT(*) FROM  SILVER_DB.ECASE_WRB_CONFORMED;                                    //973       (973)
+SELECT COUNT(*) FROM  SILVER_DB.ECASE_RWRB_CONFORMED;                                   //217       (197)
 
-RiskStrat AS (
-    SELECT 'SAC 1 - Extreme' AS RiskStrat
-    UNION ALL SELECT 'SAC 2 - High'
-    UNION ALL SELECT 'SAC 3 - Moderate'
-    UNION ALL SELECT 'SAC 4 - Low'
-    UNION ALL SELECT 'Undefined'
-),
 
-AllDateInclass AS (
-    SELECT c.IncidentDate, d.IncClassPrimary, c.Site, r.RiskStrat
-    FROM Calendar c
-    CROSS JOIN distinct_incclass d
-    CROSS JOIN RiskStrat r
-),
 
-DATA1 AS (
-    SELECT
-        Status, BaseID, Program, IncidentDate, IncidentTime,
-        IncClassPrimary, InfType,
-        CASE WHEN Site = 'Lealholme (Port Pirie)' THEN 'Port Pirie' ELSE Site END AS Site,
-        Incident_Location, IncidentCount,
-        CASE 
-            WHEN RiskStrat = '1' THEN 'SAC 1 - Extreme'
-            WHEN RiskStrat = '2' THEN 'SAC 2 - High'
-            WHEN RiskStrat = '3' THEN 'SAC 3 - Moderate'
-            WHEN RiskStrat = '4' THEN 'SAC 4 - Low'
-            ELSE 'Undefined'
-        END AS RiskStrat,
-        SIRSIncType, SIRSVicPerp, FirstName, Surname, ResidentID,
-        Description, Detail, SIRSIncCat, SIRSDegreeHarm,
-        ResidentType, ResidentStatus
-    FROM SILVER_DB.ECASE_RAC_DT_POWERBI_CLINICAL_CONFORMED
-),
+-- GOLD_DB
+SELECT COUNT(*) FROM  GOLD_DB.DIM_CUSTTABLE;                                            //61762     
+SELECT COUNT(*) FROM  GOLD_DB.DIM_ECL_ACMRESIDENTREVIEW;                                //20446     
 
-procura_data AS (
-    SELECT 
-        AccountNum,
-        CASE 
-            /* TRY_TO_NUMBER() = Snowflake safe version of ISNUMERIC() */
-            WHEN TRY_TO_NUMBER(HHAC_ECASERESIDENTID) IS NULL THEN '999999'
-            ELSE HHAC_ECASERESIDENTID
-        END AS HHAC_ECASERESIDENTID
-    FROM GOLD_DB.DIM_CUSTTABLE
-    WHERE HHAC_ECASERESIDENTID <> ''
-)
+SELECT COUNT(*) FROM  GOLD_DB.DIM_RAC_DT_ECASE_CLINICAL_DATA;                           //11880     (14977)
+SELECT COUNT(*) FROM  GOLD_DB.DIM_RAC_DT_ECASE_AN_ACC_DATA;                             //218       (211)
 
-SELECT 
-    c.Status,
-    c.BaseID,
-    'Residential' AS Program,
-    a.IncidentDate,
-    c.IncidentTime,
-    a.IncClassPrimary,
-    c.InfType,
-    a.Site,
-    c.Incident_Location,
-    COALESCE(c.IncidentCount, 0) AS IncidentCount,
-    a.RiskStrat,
-    c.SIRSIncType,
-    c.SIRSVicPerp,
-    c.FirstName,
-    c.Surname,
-    ct.AccountNum AS MedicalRecordNo,
-    c.ResidentID AS eCase_ResidentID,
-    c.Description,
-    c.Detail,
-    c.SIRSIncCat,
-    c.SIRSDegreeHarm,
-    CURRENT_TIMESTAMP() AS LOADED_AT
-FROM AllDateInclass a
-LEFT JOIN DATA1 c
-    ON c.IncidentDate = a.IncidentDate
-   AND c.IncClassPrimary = a.IncClassPrimary
-   AND c.Site = a.Site
-   AND c.RiskStrat = a.RiskStrat
-LEFT JOIN procura_data ct
-    ON c.ResidentID = ct.HHAC_ECASERESIDENTID;
+
+
+
+
 
