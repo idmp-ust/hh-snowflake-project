@@ -1,54 +1,58 @@
 -- HH_DEV
 USE WAREHOUSE DEV_WH;
-USE DATABASE HH_DEV;
+USE DATABASE HH_TEST;
 USE SCHEMA BRONZE_DB;
 
--- drop table GOLD_DB.DIM_RAC_DT_ECASE_CLINICAL_DATA;
--- select * from GOLD_DB.DIM_RAC_DT_ECASE_CLINICAL_DATA;
+-- SELECT COUNT(*) FROM GOLD_DB.DIM_RAC_DT_ECASE_CLINICAL_DATA;
+-- DROP TABLE GOLD_DB.DIM_RAC_DT_ECASE_CLINICAL_DATA;
 
 CREATE OR REPLACE DYNAMIC TABLE GOLD_DB.DIM_RAC_DT_ECASE_CLINICAL_DATA
     TARGET_LAG = '5 minutes'
     WAREHOUSE = DEV_WH
 AS
+/* ----------------------------------------------------------
+   1. SITE START DATES
+----------------------------------------------------------- */
 WITH SiteStartDates AS (
     SELECT 'Ingle Farm' AS Site, TO_DATE('2025-11-03') AS StartDate
     UNION ALL 
     SELECT 'Port Pirie', TO_DATE('2025-11-17')
 ),
 
+/* ----------------------------------------------------------
+   2. INCIDENT CLASS LIST
+----------------------------------------------------------- */
 distinct_incclass AS (
     SELECT 'Infection' AS IncClassPrimary
-    UNION ALL
-    SELECT 'SIRS \\ ' || LongDesc FROM BRONZE_DB.ECASE_ASSAULT_TYPES_RAW
-    UNION ALL
-    SELECT 'Wounds \\ ' || LongDesc FROM BRONZE_DB.ECASE_WOUND_TYPES_RAW
-    UNION ALL
-    SELECT 'Incidents \\ ' || LongDesc FROM BRONZE_DB.ECASE_INCIDENT_TYPES_RAW
-    UNION ALL
-    SELECT 'MedIncidents \\ ' || LongDesc FROM BRONZE_DB.ECASE_MEDINCIDENT_TYPE_RAW
+    UNION ALL SELECT 'SIRS \\ ' || LongDesc FROM BRONZE_DB.ECASE_ASSAULT_TYPES_RAW
+    UNION ALL SELECT 'Wounds \\ ' || LongDesc FROM BRONZE_DB.ECASE_WOUND_TYPES_RAW
+    UNION ALL SELECT 'Incidents \\ ' || LongDesc FROM BRONZE_DB.ECASE_INCIDENT_TYPES_RAW
+    UNION ALL SELECT 'MedIncidents \\ ' || LongDesc FROM BRONZE_DB.ECASE_MEDINCIDENT_TYPE_RAW
 ),
 
-/* Recursive calendar per site */
+/* ----------------------------------------------------------
+   3. RECURSIVE DATE RANGE (FIXED)
+----------------------------------------------------------- */
+RECURSIVE_CTE AS (
+    SELECT Site, StartDate AS IncidentDate
+    FROM SiteStartDates
+
+    UNION ALL
+
+    SELECT 
+        r.Site,
+        DATEADD(day, 1, r.IncidentDate)
+    FROM RECURSIVE_CTE r
+    WHERE DATEADD(day, 1, r.IncidentDate) <= CURRENT_DATE()
+),
+
 Calendar AS (
-    WITH RECURSIVE c AS (
-        SELECT 
-            Site,
-            StartDate AS IncidentDate
-        FROM SiteStartDates
-
-        UNION ALL
-
-        SELECT 
-            c.Site,
-            DATEADD(day, 1, c.IncidentDate)
-        FROM c
-        JOIN SiteStartDates s 
-            ON c.Site = s.Site
-        WHERE DATEADD(day, 1, c.IncidentDate) <= CURRENT_DATE()
-    )
-    SELECT * FROM c
+    SELECT * FROM RECURSIVE_CTE
 ),
 
+/* ----------------------------------------------------------
+   4. RISK STRAT MAPPING
+----------------------------------------------------------- */
 RiskStrat AS (
     SELECT 'SAC 1 - Extreme' AS RiskStrat
     UNION ALL SELECT 'SAC 2 - High'
@@ -57,6 +61,9 @@ RiskStrat AS (
     UNION ALL SELECT 'Undefined'
 ),
 
+/* ----------------------------------------------------------
+   5. FULL DATE × CLASS × RISK CROSS JOIN
+----------------------------------------------------------- */
 AllDateInclass AS (
     SELECT 
         c.IncidentDate,
@@ -68,7 +75,9 @@ AllDateInclass AS (
     CROSS JOIN RiskStrat r
 ),
 
-/* eCase clinical data (from your conformed dynamic table / view) */
+/* ----------------------------------------------------------
+   6. CLINICAL CONFORMED DATA
+----------------------------------------------------------- */
 DATA1 AS (
     SELECT 
         Status,
@@ -101,46 +110,47 @@ DATA1 AS (
         SIRSIncCat,
         SIRSDegreeHarm,
         ResidentType,
-        residentStatus
+        ResidentStatus
     FROM SILVER_DB.ECASE_RAC_DT_POWERBI_CLINICAL_CONFORMED
 ),
 
-/* Procura / CUSTTABLE mapping */
+/* ----------------------------------------------------------
+   7. PROCURA MAPPING (VALIDATE KEY EXISTS)
+----------------------------------------------------------- */
 procura_data AS (
     SELECT 
         AccountNum,
-        CASE 
-            WHEN TRY_TO_NUMBER(HHAC_ECASERESIDENTID) IS NULL THEN '999999'
-            ELSE HHAC_ECASERESIDENTID
-        END AS HHAC_ECASERESIDENTID
-    FROM GOLD_DB.DIM_CUSTTABLE      -- <== change to your actual Procura CUSTTABLE table
-    WHERE HHAC_ECASERESIDENTID <> ''
+        TRY_TO_NUMBER(HHAC_ECASERESIDENTID) AS ResidentID_Key
+    FROM GOLD_DB.DIM_CUSTTABLE
+    WHERE HHAC_ECASERESIDENTID IS NOT NULL 
+          AND HHAC_ECASERESIDENTID <> ''
 )
 
-/* Final output – quoted aliases preserve exact case */
+/* ----------------------------------------------------------
+   8. FINAL OUTPUT (POWER BI FRIENDLY)
+----------------------------------------------------------- */
 SELECT
-    c.Status            AS "Status",
-    c.BaseID            AS "BaseID",
-    'Residential'       AS "Program",
-    a.IncidentDate      AS "IncidentDate",
-    c.IncidentTime      AS "IncidentTime",
-    a.IncClassPrimary   AS "IncClassPrimary",
-    c.InfType           AS "InfType",
-    a.Site              AS "Site",
-    c.Incident_Location AS "Incident_Location",
+    c.Status             AS "Status",
+    c.BaseID             AS "BaseID",
+    'Residential'        AS "Program",
+    a.IncidentDate       AS "IncidentDate",
+    c.IncidentTime       AS "IncidentTime",
+    a.IncClassPrimary    AS "IncClassPrimary",
+    c.InfType            AS "InfType",
+    a.Site               AS "Site",
+    c.Incident_Location  AS "Incident_Location",
     COALESCE(c.IncidentCount, 0) AS "IncidentCount",
-    a.RiskStrat         AS "RiskStrat",
-    c.SIRSIncType       AS "SIRSIncType",
-    c.SIRSVicPerp       AS "SIRSVicPerp",
-    c.Firstname         AS "Firstname",
-    c.Surname           AS "Surname",
-    ct.AccountNum       AS "MedicalRecordNo",
-    c.ResidentID        AS "eCase_ResidentID",
-    c.Description       AS "Description",
-    c.Detail            AS "Detail",
-    c.SIRSIncCat        AS "SIRSIncCat",
-    c.SIRSDegreeHarm    AS "SIRSDEgreeHarm",  -- keeping your original final name
-    CURRENT_TIMESTAMP() AS "LOADED_AT"
+    a.RiskStrat          AS "RiskStrat",
+    c.SIRSIncType        AS "SIRSIncType",
+    c.SIRSVicPerp        AS "SIRSVicPerp",
+    c.Firstname          AS "Firstname",
+    c.Surname            AS "Surname",
+    ct.AccountNum        AS "MedicalRecordNo",
+    c.ResidentID         AS "eCase_ResidentID",
+    c.Description        AS "Description",
+    c.Detail             AS "Detail",
+    c.SIRSIncCat         AS "SIRSIncCat",
+    c.SIRSDegreeHarm     AS "SIRSDegreeHarm"
 FROM AllDateInclass a
 LEFT JOIN DATA1 c
     ON c.IncidentDate    = a.IncidentDate
@@ -148,7 +158,4 @@ LEFT JOIN DATA1 c
    AND c.Site            = a.Site
    AND c.RiskStrat       = a.RiskStrat
 LEFT JOIN procura_data ct
-    ON c.ResidentID = ct.HHAC_ECASERESIDENTID;
-
-
-
+    ON c.ResidentID = ct.ResidentID_Key;

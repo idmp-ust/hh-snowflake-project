@@ -111,8 +111,7 @@ SELECT
     CreatedDate,
     isLatest,
     MAX(DeMorton_DEMMI_Score) AS DeMorton_DEMMI_Score,
-    MAX(DeMorton_RAW_Score) AS DeMorton_RAW_Score,
-    CURRENT_TIMESTAMP() AS LOADED_AT
+    MAX(DeMorton_RAW_Score) AS DeMorton_RAW_Score
 FROM assess_data
 GROUP BY 
     ResID,

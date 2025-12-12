@@ -126,8 +126,7 @@ SELECT
     isLatest,
 
     MAX(Fraility)        AS Fraility,
-    MAX(Fraility_Score)  AS Fraility_Score,
-    CURRENT_TIMESTAMP() AS LOADED_AT
+    MAX(Fraility_Score)  AS Fraility_Score
 
 FROM assess_data
 GROUP BY

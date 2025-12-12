@@ -164,8 +164,7 @@ SELECT
       + MAX(SocialCog_SocialInt)
       + MAX(Locomotion_Comprehension)
       + MAX(Locomotion_Expression)
-    ) AS Score1,
-    CURRENT_TIMESTAMP() AS LOADED_AT
+    ) AS Score1
 
 FROM assess_data
 GROUP BY 

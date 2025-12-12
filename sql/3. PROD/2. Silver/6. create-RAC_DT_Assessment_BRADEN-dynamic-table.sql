@@ -104,8 +104,7 @@ SELECT
     CreatedDate,
     isLatest,
 
-    MAX(BRADEN_FinalScoreValue) AS BRADEN_FinalScoreValue,
-    CURRENT_TIMESTAMP() AS LOADED_AT
+    MAX(BRADEN_FinalScoreValue) AS BRADEN_FinalScoreValue
 
 FROM assess_data
 GROUP BY 

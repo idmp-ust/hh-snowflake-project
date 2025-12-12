@@ -81,8 +81,7 @@ SELECT
     A.AssessmentStatus,
     A.CreatedDate,
     A.isLatest,
-    L.SelectionValue AS AKPS_finalScore,
-    CURRENT_TIMESTAMP() AS LOADED_AT
+    L.SelectionValue AS AKPS_finalScore
 FROM LatestCarePlanElement L
 LEFT JOIN assesment_data A
     ON L.AssessmentFormID = A.FormID

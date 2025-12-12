@@ -1,6 +1,6 @@
 -- HH_DEV
 USE WAREHOUSE DEV_WH;
-USE DATABASE HH_DEV;
+USE DATABASE HH_TEST;
 USE SCHEMA BRONZE_DB;
 
 CREATE OR REPLACE DYNAMIC TABLE SILVER_DB.ECASE_RAC_DT_ASSESSMENT_AKPS_CONFORMED
@@ -81,8 +81,7 @@ SELECT
     A.AssessmentStatus,
     A.CreatedDate,
     A.isLatest,
-    L.SelectionValue AS AKPS_finalScore,
-    CURRENT_TIMESTAMP() AS LOADED_AT
+    L.SelectionValue AS AKPS_finalScore
 FROM LatestCarePlanElement L
 LEFT JOIN assesment_data A
     ON L.AssessmentFormID = A.FormID

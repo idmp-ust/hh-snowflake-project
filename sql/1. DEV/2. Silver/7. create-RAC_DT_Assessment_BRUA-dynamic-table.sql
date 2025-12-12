@@ -104,8 +104,7 @@ SELECT
     AssessmentStatus,
     CreatedDate,
     isLatest,
-    MAX(BRUA_FinalScoreValue) AS BRUA_FinalScoreValue,
-    CURRENT_TIMESTAMP() AS LOADED_AT
+    MAX(BRUA_FinalScoreValue) AS BRUA_FinalScoreValue
 FROM assess_data
 GROUP BY 
     ResID,

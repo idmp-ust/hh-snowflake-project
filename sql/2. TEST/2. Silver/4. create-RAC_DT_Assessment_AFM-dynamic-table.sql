@@ -1,6 +1,6 @@
 -- HH_DEV
 USE WAREHOUSE DEV_WH;
-USE DATABASE HH_DEV;
+USE DATABASE HH_TEST;
 USE SCHEMA BRONZE_DB;
 
 CREATE OR REPLACE DYNAMIC TABLE SILVER_DB.ECASE_RAC_DT_ASSESSMENT_AFM_CONFORMED
@@ -164,8 +164,7 @@ SELECT
       + MAX(SocialCog_SocialInt)
       + MAX(Locomotion_Comprehension)
       + MAX(Locomotion_Expression)
-    ) AS Score1,
-    CURRENT_TIMESTAMP() AS LOADED_AT
+    ) AS Score1
 
 FROM assess_data
 GROUP BY 

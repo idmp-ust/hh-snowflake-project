@@ -92,8 +92,7 @@ SELECT
          AND L.Text = 'Do I have any compounding factors? ::: Yes ### No'
          AND L.SelectionValue = 1 THEN 'No'
         ELSE NULL
-    END AS "Do I have any compounding factors?",
-    CURRENT_TIMESTAMP() AS LOADED_AT
+    END AS "Do I have any compounding factors?"
 
 FROM LatestCarePlanElement L
 LEFT JOIN assesment_data A

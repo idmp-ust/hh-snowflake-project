@@ -1,7 +1,7 @@
 DROP DATABASE HH_TEST;
 
 SET v_wh = 'DEV_WH';
-SET v_db = 'HH_DEV';
+SET v_db = 'HH_TEST';
 SET v_bronze = 'BRONZE_DB';
 SET v_silver = 'SILVER_DB';
 SET v_gold = 'GOLD_DB';

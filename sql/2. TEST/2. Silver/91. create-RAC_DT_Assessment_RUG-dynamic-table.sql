@@ -1,6 +1,6 @@
 -- HH_DEV
 USE WAREHOUSE DEV_WH;
-USE DATABASE HH_DEV;
+USE DATABASE HH_TEST;
 USE SCHEMA BRONZE_DB;
 
 
@@ -107,8 +107,7 @@ SELECT
     CreatedDate,
     isLatest,
 
-    MAX(RugItem_FinalScore) AS RugItem_FinalScore,
-    CURRENT_TIMESTAMP() AS LOADED_AT
+    MAX(RugItem_FinalScore) AS RugItem_FinalScore
 
 FROM assess_data
 GROUP BY

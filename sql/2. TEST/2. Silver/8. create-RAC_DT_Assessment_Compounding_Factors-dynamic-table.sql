@@ -1,6 +1,6 @@
 -- HH_DEV
 USE WAREHOUSE DEV_WH;
-USE DATABASE HH_DEV;
+USE DATABASE HH_TEST;
 USE SCHEMA BRONZE_DB;
 
 
@@ -92,8 +92,7 @@ SELECT
          AND L.Text = 'Do I have any compounding factors? ::: Yes ### No'
          AND L.SelectionValue = 1 THEN 'No'
         ELSE NULL
-    END AS "Do I have any compounding factors?",
-    CURRENT_TIMESTAMP() AS LOADED_AT
+    END AS "Do I have any compounding factors?"
 
 FROM LatestCarePlanElement L
 LEFT JOIN assesment_data A

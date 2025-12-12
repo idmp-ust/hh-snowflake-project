@@ -107,8 +107,7 @@ SELECT
     CreatedDate,
     isLatest,
 
-    MAX(RugItem_FinalScore) AS RugItem_FinalScore,
-    CURRENT_TIMESTAMP() AS LOADED_AT
+    MAX(RugItem_FinalScore) AS RugItem_FinalScore
 
 FROM assess_data
 GROUP BY
